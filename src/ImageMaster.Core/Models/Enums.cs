@@ -26,6 +26,16 @@ public enum PixelFormatKind
 }
 
 /// <summary>
+/// A 90-degree-increment rotation applied to an image.
+/// </summary>
+public enum RotateDirection
+{
+    Clockwise90,
+    CounterClockwise90,
+    Rotate180
+}
+
+/// <summary>
 /// How a background replacement should be performed.
 /// </summary>
 public enum BackgroundReplaceMode

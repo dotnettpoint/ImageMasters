@@ -17,6 +17,7 @@ public sealed class MainViewModel : ViewModelBase
 {
     private readonly IImageLoaderService _loaderService;
     private readonly IImageResizeService _resizeService;
+    private readonly IImageTransformService _transformService;
     private readonly IDpiService _dpiService;
     private readonly ITextOverlayService _textOverlayService;
     private readonly IBackgroundService _backgroundService;
@@ -26,11 +27,19 @@ public sealed class MainViewModel : ViewModelBase
 
     private readonly UndoRedoStack<EditorSnapshot> _undoRedo = new();
 
+    /// <summary>How many thumbnails are decoded and shown at once. Kept small so a folder with hundreds of photos never stalls the UI decoding all of them up front.</summary>
+    private const int ThumbnailPageSize = 24;
+
+    /// <summary>All image file paths in the currently open folder (cheap to enumerate - no decoding). Drives both thumbnail paging and Previous/Next image navigation.</summary>
+    private List<string> _folderFiles = new();
+    private string? _folderPath;
+
     public ObservableCollection<ThumbnailItemViewModel> Thumbnails { get; } = new();
 
     public MainViewModel(
         IImageLoaderService loaderService,
         IImageResizeService resizeService,
+        IImageTransformService transformService,
         IDpiService dpiService,
         ITextOverlayService textOverlayService,
         IBackgroundService backgroundService,
@@ -40,6 +49,7 @@ public sealed class MainViewModel : ViewModelBase
     {
         _loaderService = loaderService;
         _resizeService = resizeService;
+        _transformService = transformService;
         _dpiService = dpiService;
         _textOverlayService = textOverlayService;
         _backgroundService = backgroundService;
@@ -48,7 +58,14 @@ public sealed class MainViewModel : ViewModelBase
         _logger = logger;
 
         OpenCommand = new AsyncRelayCommand(OpenAsync);
+        SaveCommand = new AsyncRelayCommand(SaveAsync, () => Document is not null);
         SaveAsCommand = new AsyncRelayCommand(SaveAsAsync, () => Document is not null);
+        RotateClockwiseCommand = new AsyncRelayCommand(() => RotateAsync(RotateDirection.Clockwise90), () => Document is not null);
+        RotateCounterClockwiseCommand = new AsyncRelayCommand(() => RotateAsync(RotateDirection.CounterClockwise90), () => Document is not null);
+        PreviousImageCommand = new AsyncRelayCommand(() => NavigateAsync(-1), () => CanNavigate(-1));
+        NextImageCommand = new AsyncRelayCommand(() => NavigateAsync(1), () => CanNavigate(1));
+        PreviousThumbnailPageCommand = new AsyncRelayCommand(() => LoadThumbnailPageAsync(ThumbnailPageIndex - 1), () => ThumbnailPageIndex > 0);
+        NextThumbnailPageCommand = new AsyncRelayCommand(() => LoadThumbnailPageAsync(ThumbnailPageIndex + 1), () => ThumbnailPageIndex < ThumbnailPageCount - 1);
         ResizeCommand = new AsyncRelayCommand(ResizeAsync, () => Document is not null);
         AddTextCommand = new AsyncRelayCommand(EditTextLayersAsync, () => Document is not null);
         ApplyTextCommand = new AsyncRelayCommand(ApplyTextLayersAsync, () => Document is { TextLayers.Count: > 0 });
@@ -125,13 +142,35 @@ public sealed class MainViewModel : ViewModelBase
         set => SetProperty(ref _selectedThumbnail, value);
     }
 
+    private int _thumbnailPageIndex;
+    public int ThumbnailPageIndex
+    {
+        get => _thumbnailPageIndex;
+        private set => SetProperty(ref _thumbnailPageIndex, value);
+    }
+
+    public int ThumbnailPageCount => _folderFiles.Count == 0
+        ? 0
+        : (int)Math.Ceiling(_folderFiles.Count / (double)ThumbnailPageSize);
+
+    public string ThumbnailPageLabel => _folderFiles.Count == 0
+        ? string.Empty
+        : $"Page {ThumbnailPageIndex + 1} of {ThumbnailPageCount} ({_folderFiles.Count} photos)";
+
     public bool CanUndo => _undoRedo.CanUndo;
     public bool CanRedo => _undoRedo.CanRedo;
 
     // --- Commands --------------------------------------------------------
 
     public AsyncRelayCommand OpenCommand { get; }
+    public AsyncRelayCommand SaveCommand { get; }
     public AsyncRelayCommand SaveAsCommand { get; }
+    public AsyncRelayCommand RotateClockwiseCommand { get; }
+    public AsyncRelayCommand RotateCounterClockwiseCommand { get; }
+    public AsyncRelayCommand PreviousImageCommand { get; }
+    public AsyncRelayCommand NextImageCommand { get; }
+    public AsyncRelayCommand PreviousThumbnailPageCommand { get; }
+    public AsyncRelayCommand NextThumbnailPageCommand { get; }
     public AsyncRelayCommand ResizeCommand { get; }
     public AsyncRelayCommand AddTextCommand { get; }
     public AsyncRelayCommand ApplyTextCommand { get; }
@@ -182,33 +221,99 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// Re-scans the current folder's file list only when the folder actually
+    /// changed (cheap - no decoding), then loads whichever thumbnail page
+    /// contains <paramref name="currentFilePath"/>.
+    /// </summary>
     private async Task PopulateThumbnailStripAsync(string currentFilePath)
     {
+        var folder = Path.GetDirectoryName(currentFilePath);
+        if (folder is null || !Directory.Exists(folder))
+        {
+            _folderFiles = new List<string>();
+            _folderPath = null;
+            await LoadThumbnailPageAsync(0, currentFilePath);
+            return;
+        }
+
+        if (!string.Equals(folder, _folderPath, StringComparison.OrdinalIgnoreCase))
+        {
+            _folderPath = folder;
+            _folderFiles = Directory.EnumerateFiles(folder)
+                .Where(f => _loaderService.SupportedExtensions.Contains(Path.GetExtension(f).TrimStart('.')))
+                .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        var currentIndex = _folderFiles.FindIndex(f => string.Equals(f, currentFilePath, StringComparison.OrdinalIgnoreCase));
+        var pageIndex = currentIndex < 0 ? 0 : currentIndex / ThumbnailPageSize;
+
+        await LoadThumbnailPageAsync(pageIndex, currentFilePath);
+    }
+
+    /// <summary>
+    /// Loads (decodes) thumbnails for just one page of the current folder's
+    /// files - this is the actual expensive step, so folders with hundreds of
+    /// photos never decode more than <see cref="ThumbnailPageSize"/> at once.
+    /// If the requested page is already the one showing, this only moves the
+    /// selection highlight instead of re-decoding anything.
+    /// </summary>
+    private async Task LoadThumbnailPageAsync(int pageIndex, string? currentFilePath = null)
+    {
+        if (_folderFiles.Count == 0)
+        {
+            Thumbnails.Clear();
+            ThumbnailPageIndex = 0;
+            SelectedThumbnail = null;
+            OnPropertyChanged(nameof(ThumbnailPageCount));
+            OnPropertyChanged(nameof(ThumbnailPageLabel));
+            RaiseAllCommandsCanExecuteChanged();
+            return;
+        }
+
+        pageIndex = Math.Clamp(pageIndex, 0, ThumbnailPageCount - 1);
+        var targetPath = currentFilePath ?? Document?.SourceFilePath;
+
+        if (pageIndex == ThumbnailPageIndex && Thumbnails.Count > 0)
+        {
+            foreach (var item in Thumbnails)
+            {
+                item.IsSelected = string.Equals(item.FilePath, targetPath, StringComparison.OrdinalIgnoreCase);
+                if (item.IsSelected) SelectedThumbnail = item;
+            }
+            return;
+        }
+
+        ThumbnailPageIndex = pageIndex;
         Thumbnails.Clear();
 
-        var folder = Path.GetDirectoryName(currentFilePath);
-        if (folder is null || !Directory.Exists(folder)) return;
-
-        var siblingFiles = Directory.EnumerateFiles(folder)
-            .Where(f => _loaderService.SupportedExtensions.Contains(Path.GetExtension(f).TrimStart('.')))
-            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        foreach (var file in siblingFiles)
+        var pageFiles = _folderFiles.Skip(pageIndex * ThumbnailPageSize).Take(ThumbnailPageSize).ToList();
+        foreach (var file in pageFiles)
         {
-            var item = new ThumbnailItemViewModel(file) { IsSelected = string.Equals(file, currentFilePath, StringComparison.OrdinalIgnoreCase) };
+            var item = new ThumbnailItemViewModel(file) { IsSelected = string.Equals(file, targetPath, StringComparison.OrdinalIgnoreCase) };
             Thumbnails.Add(item);
             if (item.IsSelected) SelectedThumbnail = item;
         }
 
-        // Load thumbnail images in the background so opening a folder full
-        // of large images doesn't stall the UI.
+        OnPropertyChanged(nameof(ThumbnailPageCount));
+        OnPropertyChanged(nameof(ThumbnailPageLabel));
+        RaiseAllCommandsCanExecuteChanged();
+
+        // Decode thumbnail images for this page in the background so it doesn't stall the UI.
         foreach (var item in Thumbnails.ToList())
         {
             var thumbResult = await _loaderService.LoadThumbnailAsync(item.FilePath, 96);
             if (thumbResult.Success)
                 item.Thumbnail = PixelBufferBitmapConverter.ToBitmapSource(thumbResult.Value!);
         }
+    }
+
+    /// <summary>Saves back to the file the document was opened from, in its original format, without prompting.</summary>
+    private async Task SaveAsync()
+    {
+        if (Document is null) return;
+        await SaveToAsync(Document.SourceFilePath, Document.OriginalFormat, confirmOverwrite: false);
     }
 
     private async Task SaveAsAsync()
@@ -220,11 +325,17 @@ public sealed class MainViewModel : ViewModelBase
         if (choice is null) return;
 
         var (outputPath, format) = choice.Value;
+        await SaveToAsync(outputPath, format, confirmOverwrite: true);
+    }
+
+    private async Task SaveToAsync(string outputPath, ImageFormatType format, bool confirmOverwrite)
+    {
+        if (Document is null) return;
 
         var overwritesOriginal = string.Equals(
             Path.GetFullPath(outputPath), Path.GetFullPath(Document.SourceFilePath), StringComparison.OrdinalIgnoreCase);
 
-        if (overwritesOriginal)
+        if (overwritesOriginal && confirmOverwrite)
         {
             var confirmed = _dialogService.ShowConfirm(
                 "Overwrite Original?",
@@ -296,6 +407,48 @@ public sealed class MainViewModel : ViewModelBase
             Document.PixelBuffer = result.Value!;
             return true;
         });
+    }
+
+    private async Task RotateAsync(RotateDirection direction)
+    {
+        if (Document is null) return;
+
+        await RunEditAsync("Rotating...", async () =>
+        {
+            var result = await _transformService.RotateAsync(Document.PixelBuffer, direction);
+            if (!result.Success)
+            {
+                _dialogService.ShowError("Rotate Failed", result.ErrorMessage!);
+                return false;
+            }
+
+            Document.PixelBuffer = result.Value!;
+            return true;
+        });
+    }
+
+    // --- Navigation --------------------------------------------------
+
+    private bool CanNavigate(int offset)
+    {
+        if (Document is null || _folderFiles.Count == 0) return false;
+        var index = _folderFiles.FindIndex(f => string.Equals(f, Document.SourceFilePath, StringComparison.OrdinalIgnoreCase));
+        if (index < 0) return false;
+        var target = index + offset;
+        return target >= 0 && target < _folderFiles.Count;
+    }
+
+    private async Task NavigateAsync(int offset)
+    {
+        if (Document is null) return;
+
+        var index = _folderFiles.FindIndex(f => string.Equals(f, Document.SourceFilePath, StringComparison.OrdinalIgnoreCase));
+        if (index < 0) return;
+
+        var target = index + offset;
+        if (target < 0 || target >= _folderFiles.Count) return;
+
+        await LoadFileAsync(_folderFiles[target]);
     }
 
     private async Task EditTextLayersAsync()
