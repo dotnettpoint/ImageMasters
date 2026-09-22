@@ -50,6 +50,7 @@ never blocks the image from opening, it only adds a warning.
 | `SkiaSharp` + `SkiaSharp.NativeAssets.Win32` | Cross-platform image decode/encode/draw. Chosen over `System.Drawing.Common` per the requirements (GDI+-based, Windows-only, effectively legacy). |
 | `MetadataExtractor` | Defensive EXIF/JFIF/ICC metadata reading, isolated from pixel decode. |
 | `Microsoft.Extensions.Hosting` / `...DependencyInjection` | Generic Host as the DI composition root (`App.xaml.cs`), so every service is constructor-injected rather than hand-wired. |
+| `Microsoft.ML.OnnxRuntime` | Runs locally-stored ONNX models offline for the AI features (see below). |
 | `xunit`, `xunit.runner.visualstudio`, `Microsoft.NET.Test.Sdk`, `coverlet.collector` | Standard xUnit test stack. |
 
 ## Known limitations (called out in code comments too)
@@ -60,12 +61,9 @@ never blocks the image from opening, it only adds a warning.
   crashing. TIFF *opening* still works fine, since Skia can decode more
   formats than it can encode. A production build could add a TIFF encoder
   via a native `libtiff` binding if that format is a hard requirement.
-- **Background removal is a threshold, not segmentation.** The chroma-key
-  modes in `SkiaBackgroundService` remove pixels within a color-distance
-  tolerance of a chosen key color. This works well for a uniform backdrop
-  (green screen, flat studio background) and poorly for a complex or
-  textured background - there's no ML segmentation model wired in, per the
-  spec's explicit note that this is out of scope.
+- **Chroma-key background removal** (`SkiaBackgroundService`) still exists
+  alongside the AI option below, for a uniform backdrop (green screen, flat
+  studio background) where it's faster and needs no model file.
 - **Undo/redo is snapshot-based**, not command/diff-based (see
   `UndoRedoStack<T>` in `App/Infrastructure`). Simple and correct, but each
   undo step holds a full copy of the pixel buffer; fine for typical photo
@@ -86,6 +84,29 @@ correct as of the package version pinned in the `.csproj`, but metadata
 library APIs do shift between versions - and (2) `SKBitmap.Resize`'s exact
 overload/return-null semantics, which can vary slightly across SkiaSharp
 versions.
+
+## AI features (local ONNX models)
+
+AI-based features run fully offline via `Microsoft.ML.OnnxRuntime` - no
+network calls at runtime, no API keys, no per-use cost. Model weights are
+large binary assets and are **never checked into this repo** (see
+`.gitignore`); each one is downloaded once per machine into
+`%LOCALAPPDATA%\ImageMaster\models\`.
+
+| Feature | Status | Model | Where to get it |
+|---|---|---|---|
+| AI Remove Background | Implemented (`OnnxBackgroundSegmentationService`) | `u2netp.onnx` (~4.6 MB, U2Net-family saliency segmentation) | https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx |
+| Object removal (inpainting) | Not yet implemented | - | - |
+| AI image editing / enhancement | Not yet implemented | - | - |
+
+To enable AI background removal, download the file above and save it as
+`%LOCALAPPDATA%\ImageMaster\models\u2netp.onnx`. Without it, the "AI Remove
+Background" command shows a clear in-app error naming the exact expected
+path instead of failing silently or crashing. Once the background is
+transparent, use the existing "Change Background..." dialog (Image menu) to
+fill it with a color or composite it over a replacement image - the AI step
+only produces the mask; compositing reuses the pipeline already built for
+chroma-key mode.
 
 ## Running
 

@@ -22,6 +22,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IImageIntegrityService _integrityService;
     private readonly IImageAdjustmentService _adjustmentService;
     private readonly IImageFilterService _filterService;
+    private readonly IBackgroundSegmentationService _segmentationService;
     private readonly IDpiService _dpiService;
     private readonly ITextOverlayService _textOverlayService;
     private readonly IBackgroundService _backgroundService;
@@ -51,6 +52,7 @@ public sealed class MainViewModel : ViewModelBase
         IImageIntegrityService integrityService,
         IImageAdjustmentService adjustmentService,
         IImageFilterService filterService,
+        IBackgroundSegmentationService segmentationService,
         IDpiService dpiService,
         ITextOverlayService textOverlayService,
         IBackgroundService backgroundService,
@@ -65,6 +67,7 @@ public sealed class MainViewModel : ViewModelBase
         _integrityService = integrityService;
         _adjustmentService = adjustmentService;
         _filterService = filterService;
+        _segmentationService = segmentationService;
         _dpiService = dpiService;
         _textOverlayService = textOverlayService;
         _backgroundService = backgroundService;
@@ -100,6 +103,7 @@ public sealed class MainViewModel : ViewModelBase
         GrayscaleFilterCommand = new AsyncRelayCommand(() => ApplyFilterAsync(ImageFilterType.Grayscale), () => Document is not null);
         SepiaFilterCommand = new AsyncRelayCommand(() => ApplyFilterAsync(ImageFilterType.Sepia), () => Document is not null);
         InvertFilterCommand = new AsyncRelayCommand(() => ApplyFilterAsync(ImageFilterType.Invert), () => Document is not null);
+        AiRemoveBackgroundCommand = new AsyncRelayCommand(AiRemoveBackgroundAsync, () => Document is not null);
     }
 
     // --- Bindable state -----------------------------------------------
@@ -261,6 +265,7 @@ public sealed class MainViewModel : ViewModelBase
     public AsyncRelayCommand GrayscaleFilterCommand { get; }
     public AsyncRelayCommand SepiaFilterCommand { get; }
     public AsyncRelayCommand InvertFilterCommand { get; }
+    public AsyncRelayCommand AiRemoveBackgroundCommand { get; }
 
     // --- File operations ---------------------------------------------
 
@@ -577,6 +582,29 @@ public sealed class MainViewModel : ViewModelBase
             Document.PixelBuffer = result.Value!;
             return true;
         });
+    }
+
+    /// <summary>
+    /// AI background removal: predicts a foreground mask and makes the
+    /// background transparent. Run "Change Background..." afterwards to fill
+    /// or replace it, reusing the existing chroma-key-mode pipeline.
+    /// </summary>
+    private async Task AiRemoveBackgroundAsync()
+    {
+        if (Document is null) return;
+
+        await RunEditAsync("Removing background (AI)...", async () =>
+        {
+            var result = await _segmentationService.RemoveBackgroundAsync(Document.PixelBuffer);
+            if (!result.Success)
+            {
+                _dialogService.ShowError("AI Background Removal Failed", result.ErrorMessage!);
+                return false;
+            }
+
+            Document.PixelBuffer = result.Value!;
+            return true;
+        }, checkBackgroundIntegrity: false); // removing the background is the whole point of this operation
     }
 
     // --- Navigation --------------------------------------------------

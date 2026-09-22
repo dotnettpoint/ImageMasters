@@ -26,6 +26,13 @@
          failures, as required. -->
     <PackageReference Include="MetadataExtractor" Version="2.8.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+
+    <!-- Microsoft.ML.OnnxRuntime: runs locally-stored ONNX models fully
+         offline (no network calls, no API keys, no per-use cost) for the
+         AI-based Phase 4 features - background segmentation now, with
+         object-removal/inpainting and enhancement models to follow using
+         the same pattern. -->
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
   </ItemGroup>
 
   <ItemGroup>

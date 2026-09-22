@@ -2,3 +2,7 @@ bin/
 obj/
 .vs/
 *.user
+
+# AI model weights (large binary assets) are downloaded locally, never committed - see README.
+*.onnx
+models/

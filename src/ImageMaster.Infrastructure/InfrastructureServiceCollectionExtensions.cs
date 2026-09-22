@@ -18,6 +18,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IImageIntegrityService, BackgroundIntegrityChecker>();
         services.AddSingleton<IImageAdjustmentService, SkiaImageAdjustmentService>();
         services.AddSingleton<IImageFilterService, SkiaImageFilterService>();
+        services.AddSingleton<IBackgroundSegmentationService, OnnxBackgroundSegmentationService>();
         services.AddSingleton<IDpiService, SkiaDpiService>();
         services.AddSingleton<ITextOverlayService, SkiaTextOverlayService>();
         services.AddSingleton<IBackgroundService, SkiaBackgroundService>();
