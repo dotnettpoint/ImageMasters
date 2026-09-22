@@ -73,7 +73,11 @@ public sealed class SkiaFileExportService : IFileExportService
 
         try
         {
-            using var bitmap = SkiaBufferConverter.ToSkBitmap(buffer);
+            var targetSupportsAlpha = request.TargetFormat is not (ImageFormatType.Jpeg or ImageFormatType.Bmp);
+            using var bitmap = !targetSupportsAlpha && HasTransparency(buffer)
+                ? CompositeOntoBackground(buffer, request.BackgroundFillArgb ?? 0xFFFFFFFF)
+                : SkiaBufferConverter.ToSkBitmap(buffer);
+
             var (encodedFormat, quality) = MapFormat(request.TargetFormat, request.JpegQuality);
 
             using var image = SKImage.FromBitmap(bitmap);
@@ -105,6 +109,41 @@ public sealed class SkiaFileExportService : IFileExportService
             _logger.LogError("Unexpected error while saving.", ex);
             return OperationResult<string>.Fail("The file couldn't be saved due to an unexpected error.");
         }
+    }
+
+    /// <summary>True if any pixel isn't fully opaque - cheap early-exit scan, since most photos are fully opaque.</summary>
+    private static bool HasTransparency(ImagePixelBuffer buffer)
+    {
+        var pixels = buffer.Pixels;
+        for (var i = 3; i < pixels.Length; i += 4)
+        {
+            if (pixels[i] != 255) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Composites the buffer onto a solid opaque background before encoding
+    /// to a format with no alpha support, so transparent/semi-transparent
+    /// pixels resolve to an explicit, user-visible color instead of whatever
+    /// the codec happens to do with a dropped alpha channel (e.g. black).
+    /// </summary>
+    private static SKBitmap CompositeOntoBackground(ImagePixelBuffer buffer, uint backgroundArgb)
+    {
+        var backgroundColor = new SKColor(
+            (byte)((backgroundArgb >> 16) & 0xFF),
+            (byte)((backgroundArgb >> 8) & 0xFF),
+            (byte)(backgroundArgb & 0xFF),
+            (byte)((backgroundArgb >> 24) & 0xFF));
+
+        var flattened = new SKBitmap(SkiaBufferConverter.BufferImageInfo(buffer.Width, buffer.Height));
+        using var canvas = new SKCanvas(flattened);
+        canvas.Clear(backgroundColor);
+
+        using var source = SkiaBufferConverter.ToSkBitmap(buffer);
+        canvas.DrawBitmap(source, 0, 0);
+
+        return flattened;
     }
 
     private static (SKEncodedImageFormat Format, int Quality) MapFormat(ImageFormatType format, int jpegQuality) => format switch

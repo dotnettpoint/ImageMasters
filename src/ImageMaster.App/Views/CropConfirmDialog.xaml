@@ -1,0 +1,26 @@
+<Window x:Class="ImageMaster.App.Views.CropConfirmDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Apply Crop" Height="200" Width="380"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        ShowInTaskbar="False">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="What would you like to do with the selected area?" TextWrapping="Wrap" Margin="0,0,0,14"/>
+
+        <StackPanel Grid.Row="1" VerticalAlignment="Center">
+            <Button Content="Save cropped area as new image..." Padding="8,10" Margin="0,0,0,8"
+                    HorizontalContentAlignment="Left" Click="OnExtractAsNewClick"/>
+            <Button Content="Crop current image" Padding="8,10"
+                    HorizontalContentAlignment="Left" Click="OnReplaceExistingClick"/>
+        </StackPanel>
+
+        <Button Grid.Row="2" Content="Cancel" Width="90" HorizontalAlignment="Right" Padding="8,4"
+                IsCancel="True" Margin="0,14,0,0"/>
+    </Grid>
+</Window>

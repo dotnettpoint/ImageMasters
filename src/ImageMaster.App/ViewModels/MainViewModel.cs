@@ -19,6 +19,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IImageResizeService _resizeService;
     private readonly IImageTransformService _transformService;
     private readonly IImageCropService _cropService;
+    private readonly IImageIntegrityService _integrityService;
     private readonly IDpiService _dpiService;
     private readonly ITextOverlayService _textOverlayService;
     private readonly IBackgroundService _backgroundService;
@@ -45,6 +46,7 @@ public sealed class MainViewModel : ViewModelBase
         IImageResizeService resizeService,
         IImageTransformService transformService,
         IImageCropService cropService,
+        IImageIntegrityService integrityService,
         IDpiService dpiService,
         ITextOverlayService textOverlayService,
         IBackgroundService backgroundService,
@@ -56,6 +58,7 @@ public sealed class MainViewModel : ViewModelBase
         _resizeService = resizeService;
         _transformService = transformService;
         _cropService = cropService;
+        _integrityService = integrityService;
         _dpiService = dpiService;
         _textOverlayService = textOverlayService;
         _backgroundService = backgroundService;
@@ -73,7 +76,7 @@ public sealed class MainViewModel : ViewModelBase
         PreviousThumbnailPageCommand = new AsyncRelayCommand(() => LoadThumbnailPageAsync(ThumbnailPageIndex - 1), () => ThumbnailPageIndex > 0);
         NextThumbnailPageCommand = new AsyncRelayCommand(() => LoadThumbnailPageAsync(ThumbnailPageIndex + 1), () => ThumbnailPageIndex < ThumbnailPageCount - 1);
         ResizeCommand = new AsyncRelayCommand(ResizeAsync, () => Document is not null);
-        CropCommand = new AsyncRelayCommand(CropAsync, () => Document is not null);
+        CropCommand = new RelayCommand(() => CurrentTool = CurrentTool == ToolMode.Crop ? ToolMode.None : ToolMode.Crop, () => Document is not null);
         AddTextCommand = new AsyncRelayCommand(EditTextLayersAsync, () => Document is not null);
         ApplyTextCommand = new AsyncRelayCommand(ApplyTextLayersAsync, () => Document is { TextLayers.Count: > 0 });
         BackgroundCommand = new AsyncRelayCommand(ChangeBackgroundAsync, () => Document is not null);
@@ -85,6 +88,8 @@ public sealed class MainViewModel : ViewModelBase
             if (SelectedThumbnail is not null)
                 await LoadFileAsync(SelectedThumbnail.FilePath);
         });
+        EyedropperToolCommand = new RelayCommand(() => CurrentTool = CurrentTool == ToolMode.Eyedropper ? ToolMode.None : ToolMode.Eyedropper, () => Document is not null);
+        CopyPickedColorCommand = new RelayCommand(() => _dialogService.CopyToClipboard(PickedColorHex), () => PickedColorArgb is not null);
     }
 
     // --- Bindable state -----------------------------------------------
@@ -167,6 +172,43 @@ public sealed class MainViewModel : ViewModelBase
     public bool CanUndo => _undoRedo.CanUndo;
     public bool CanRedo => _undoRedo.CanRedo;
 
+    private ToolMode _currentTool = ToolMode.None;
+    /// <summary>Which interactive canvas tool is active. Only one tool is active at a time - activating one deactivates any other.</summary>
+    public ToolMode CurrentTool
+    {
+        get => _currentTool;
+        set
+        {
+            if (SetProperty(ref _currentTool, value))
+            {
+                OnPropertyChanged(nameof(IsEyedropperActive));
+                OnPropertyChanged(nameof(IsCropToolActive));
+            }
+        }
+    }
+
+    public bool IsEyedropperActive => CurrentTool == ToolMode.Eyedropper;
+    public bool IsCropToolActive => CurrentTool == ToolMode.Crop;
+
+    private uint? _pickedColorArgb;
+    /// <summary>The last color sampled with the eyedropper tool, if any.</summary>
+    public uint? PickedColorArgb
+    {
+        get => _pickedColorArgb;
+        private set
+        {
+            if (SetProperty(ref _pickedColorArgb, value))
+            {
+                OnPropertyChanged(nameof(PickedColorHex));
+                RaiseAllCommandsCanExecuteChanged();
+            }
+        }
+    }
+
+    public string PickedColorHex => PickedColorArgb is uint argb
+        ? $"#{(argb >> 16) & 0xFF:X2}{(argb >> 8) & 0xFF:X2}{argb & 0xFF:X2}"
+        : "No color picked";
+
     // --- Commands --------------------------------------------------------
 
     public AsyncRelayCommand OpenCommand { get; }
@@ -179,7 +221,7 @@ public sealed class MainViewModel : ViewModelBase
     public AsyncRelayCommand PreviousThumbnailPageCommand { get; }
     public AsyncRelayCommand NextThumbnailPageCommand { get; }
     public AsyncRelayCommand ResizeCommand { get; }
-    public AsyncRelayCommand CropCommand { get; }
+    public RelayCommand CropCommand { get; }
     public AsyncRelayCommand AddTextCommand { get; }
     public AsyncRelayCommand ApplyTextCommand { get; }
     public AsyncRelayCommand BackgroundCommand { get; }
@@ -187,6 +229,8 @@ public sealed class MainViewModel : ViewModelBase
     public RelayCommand UndoCommand { get; }
     public RelayCommand RedoCommand { get; }
     public AsyncRelayCommand SelectThumbnailCommand { get; }
+    public RelayCommand EyedropperToolCommand { get; }
+    public RelayCommand CopyPickedColorCommand { get; }
 
     // --- File operations ---------------------------------------------
 
@@ -435,7 +479,32 @@ public sealed class MainViewModel : ViewModelBase
 
             Document.PixelBuffer = result.Value!;
             return true;
-        });
+        }, checkBackgroundIntegrity: false); // rotation moves the corners by design
+    }
+
+    // --- Eyedropper ----------------------------------------------------
+
+    /// <summary>
+    /// Samples the pixel at the given image-pixel coordinate and stores it as
+    /// <see cref="PickedColorArgb"/>. Single-shot, like the classic Paint
+    /// eyedropper: picking a color deactivates the tool immediately.
+    /// </summary>
+    public void PickColorAt(int x, int y)
+    {
+        if (Document is null) return;
+
+        var buffer = Document.PixelBuffer;
+        if (x < 0 || y < 0 || x >= buffer.Width || y >= buffer.Height) return;
+
+        var offset = y * buffer.Stride + x * 4;
+        byte b = buffer.Pixels[offset];
+        byte g = buffer.Pixels[offset + 1];
+        byte r = buffer.Pixels[offset + 2];
+        byte a = buffer.Pixels[offset + 3];
+
+        PickedColorArgb = ((uint)a << 24) | ((uint)r << 16) | ((uint)g << 8) | b;
+        CurrentTool = ToolMode.None;
+        StatusText = $"Picked color {PickedColorHex}.";
     }
 
     // --- Navigation --------------------------------------------------
@@ -462,32 +531,88 @@ public sealed class MainViewModel : ViewModelBase
         await LoadFileAsync(_folderFiles[target]);
     }
 
-    private async Task CropAsync()
+    // --- Interactive crop ----------------------------------------------
+
+    /// <summary>Thin passthrough so the window's code-behind (which owns the crop-selection UI) can prompt without touching <see cref="IDialogService"/> directly.</summary>
+    public CropMode? PromptCropMode() => _dialogService.ShowCropConfirmDialog();
+
+    /// <summary>
+    /// Applies a confirmed interactive crop selection. <see cref="CropMode.ReplaceExisting"/>
+    /// goes through the normal undo-able edit pipeline; <see cref="CropMode.ExtractAsNew"/>
+    /// exports just the selected region to a new file and leaves the open document untouched.
+    /// </summary>
+    public async Task ApplyInteractiveCropAsync(int x, int y, int width, int height, CropMode mode)
     {
         if (Document is null) return;
 
-        var request = _dialogService.ShowCropDialog(Document.PixelBuffer.Width, Document.PixelBuffer.Height);
-        if (request is null) return;
+        var request = new CropRequest { X = x, Y = y, Width = width, Height = height };
 
-        await RunEditAsync("Cropping...", async () =>
+        if (mode == CropMode.ReplaceExisting)
         {
-            var result = await _cropService.CropAsync(Document.PixelBuffer, request);
-            if (!result.Success)
+            await RunEditAsync("Cropping...", async () =>
             {
-                _dialogService.ShowError("Crop Failed", result.ErrorMessage!);
-                return false;
+                var result = await _cropService.CropAsync(Document.PixelBuffer, request);
+                if (!result.Success)
+                {
+                    _dialogService.ShowError("Crop Failed", result.ErrorMessage!);
+                    return false;
+                }
+
+                Document.PixelBuffer = result.Value!;
+                return true;
+            });
+            return;
+        }
+
+        // ExtractAsNew: crop, then Save-As the result. The open document (and
+        // undo stack) is never touched, and the original file on disk is
+        // never overwritten implicitly - the export path enforces that.
+        IsBusy = true;
+        StatusText = "Cropping...";
+        try
+        {
+            var cropResult = await _cropService.CropAsync(Document.PixelBuffer, request);
+            if (!cropResult.Success)
+            {
+                _dialogService.ShowError("Crop Failed", cropResult.ErrorMessage!);
+                return;
             }
 
-            Document.PixelBuffer = result.Value!;
-            return true;
-        });
+            var suggestedName = Path.GetFileNameWithoutExtension(Document.SourceFilePath) + "_crop";
+            var choice = _dialogService.ShowSaveAsDialog(suggestedName, Document.OriginalFormat);
+            if (choice is null) return;
+
+            var (outputPath, format) = choice.Value;
+            var exportRequest = new ExportRequest
+            {
+                OutputFilePath = outputPath,
+                TargetFormat = format,
+                JpegQuality = _lastUsedQuality,
+                PreserveMetadata = true,
+                AllowOverwriteOriginal = false,
+                BackgroundFillArgb = PickedColorArgb
+            };
+
+            var saveResult = await _exportService.SaveAsAsync(cropResult.Value!, Document.Metadata, Document.SourceFilePath, exportRequest);
+            if (!saveResult.Success)
+            {
+                _dialogService.ShowError("Couldn't Save Cropped Image", saveResult.ErrorMessage!);
+                return;
+            }
+
+            StatusText = $"Cropped region saved to {saveResult.Value}. Original image unchanged.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
     }
 
     private async Task EditTextLayersAsync()
     {
         if (Document is null) return;
 
-        var layers = _dialogService.ShowTextOverlayDialog(Document.TextLayers, Document.PixelBuffer.Width, Document.PixelBuffer.Height);
+        var layers = _dialogService.ShowTextOverlayDialog(Document.TextLayers, Document.PixelBuffer.Width, Document.PixelBuffer.Height, PickedColorArgb);
         if (layers is null) return;
 
         PushUndoSnapshot();
@@ -533,7 +658,7 @@ public sealed class MainViewModel : ViewModelBase
     {
         if (Document is null) return;
 
-        var request = _dialogService.ShowBackgroundDialog();
+        var request = _dialogService.ShowBackgroundDialog(PickedColorArgb);
         if (request is null) return;
 
         await RunEditAsync("Changing background...", async () =>
@@ -547,7 +672,7 @@ public sealed class MainViewModel : ViewModelBase
 
             Document.PixelBuffer = result.Value!;
             return true;
-        });
+        }, checkBackgroundIntegrity: false); // changing the background is the whole point of this operation
     }
 
     private void ChangeDpi()
@@ -616,7 +741,14 @@ public sealed class MainViewModel : ViewModelBase
     // --- Shared helpers ---------------------------------------------
 
     /// <summary>Runs a destructive pixel edit: snapshots for undo (only once it actually succeeds), executes, refreshes the display, and reports errors uniformly.</summary>
-    private async Task RunEditAsync(string busyText, Func<Task<bool>> editAction)
+    /// <param name="checkBackgroundIntegrity">
+    /// Whether to compare corner-sampled background color before/after and
+    /// log a warning if it shifted unexpectedly. Pass false for operations
+    /// where a background/corner color change is the intended outcome (e.g.
+    /// rotate, which moves corners; background replacement, whose entire
+    /// point is changing the background).
+    /// </param>
+    private async Task RunEditAsync(string busyText, Func<Task<bool>> editAction, bool checkBackgroundIntegrity = true)
     {
         if (Document is null) return;
 
@@ -634,6 +766,16 @@ public sealed class MainViewModel : ViewModelBase
             {
                 StatusText = "Ready.";
                 return;
+            }
+
+            if (checkBackgroundIntegrity)
+            {
+                var integrity = _integrityService.CheckBackgroundColor(preEditSnapshot.PixelBuffer, Document.PixelBuffer);
+                if (!integrity.IsWithinTolerance)
+                {
+                    foreach (var warning in integrity.Warnings)
+                        _logger.LogWarning(warning);
+                }
             }
 
             _undoRedo.Push(preEditSnapshot);

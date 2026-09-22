@@ -17,6 +17,14 @@ public sealed class ExportRequest
 
     public bool AllowOverwriteOriginal { get; init; }
 
+    /// <summary>
+    /// Background color (ARGB) to composite transparent/semi-transparent
+    /// pixels onto when the target format doesn't support alpha (e.g. Jpeg,
+    /// Bmp) - so the codec never silently picks an unintended fill color.
+    /// Defaults to opaque white when not set.
+    /// </summary>
+    public uint? BackgroundFillArgb { get; init; }
+
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();

@@ -14,15 +14,17 @@ public partial class TextOverlayDialog : Window
     private readonly List<TextOverlayLayer> _layers;
     private readonly int _imageWidth;
     private readonly int _imageHeight;
+    private readonly uint? _defaultNewLayerColor;
     private bool _isUpdatingFromCode;
 
     public IReadOnlyList<TextOverlayLayer>? Result { get; private set; }
 
-    public TextOverlayDialog(IReadOnlyList<TextOverlayLayer> existingLayers, int imageWidth, int imageHeight)
+    public TextOverlayDialog(IReadOnlyList<TextOverlayLayer> existingLayers, int imageWidth, int imageHeight, uint? defaultNewLayerColor = null)
     {
         InitializeComponent();
         _imageWidth = imageWidth;
         _imageHeight = imageHeight;
+        _defaultNewLayerColor = defaultNewLayerColor;
 
         // Work on clones so cancelling the dialog leaves the document untouched.
         _layers = existingLayers.Select(CloneLayer).ToList();
@@ -65,7 +67,8 @@ public partial class TextOverlayDialog : Window
         {
             Text = "New Text",
             X = _imageWidth / 4.0,
-            Y = _imageHeight / 4.0
+            Y = _imageHeight / 4.0,
+            ArgbColor = _defaultNewLayerColor ?? 0xFFFFFFFF
         };
         _layers.Add(layer);
         RefreshList();

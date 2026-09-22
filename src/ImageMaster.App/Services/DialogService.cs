@@ -72,15 +72,17 @@ public sealed class DialogService : IDialogService
     public void ShowInfo(string title, string message) =>
         MessageBox.Show(ActiveWindow, message, title, MessageBoxButton.OK, MessageBoxImage.Information);
 
+    public void CopyToClipboard(string text) => Clipboard.SetText(text);
+
     public ResizeRequest? ShowResizeDialog(int sourceWidth, int sourceHeight)
     {
         var dialog = new ResizeDialog(sourceWidth, sourceHeight, _resizeService) { Owner = ActiveWindow };
         return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 
-    public CropRequest? ShowCropDialog(int sourceWidth, int sourceHeight)
+    public CropMode? ShowCropConfirmDialog()
     {
-        var dialog = new CropDialog(sourceWidth, sourceHeight) { Owner = ActiveWindow };
+        var dialog = new CropConfirmDialog { Owner = ActiveWindow };
         return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 
@@ -96,15 +98,15 @@ public sealed class DialogService : IDialogService
         return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 
-    public IReadOnlyList<TextOverlayLayer>? ShowTextOverlayDialog(IReadOnlyList<TextOverlayLayer> existingLayers, int imageWidth, int imageHeight)
+    public IReadOnlyList<TextOverlayLayer>? ShowTextOverlayDialog(IReadOnlyList<TextOverlayLayer> existingLayers, int imageWidth, int imageHeight, uint? defaultNewLayerColor = null)
     {
-        var dialog = new TextOverlayDialog(existingLayers, imageWidth, imageHeight) { Owner = ActiveWindow };
+        var dialog = new TextOverlayDialog(existingLayers, imageWidth, imageHeight, defaultNewLayerColor) { Owner = ActiveWindow };
         return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 
-    public BackgroundReplaceRequest? ShowBackgroundDialog()
+    public BackgroundReplaceRequest? ShowBackgroundDialog(uint? initialFillColor = null)
     {
-        var dialog = new BackgroundDialog { Owner = ActiveWindow };
+        var dialog = new BackgroundDialog(initialFillColor) { Owner = ActiveWindow };
         return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 

@@ -2,7 +2,8 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="{Binding WindowTitle}" Height="800" Width="1200"
-        MinHeight="500" MinWidth="700">
+        MinHeight="500" MinWidth="700"
+        PreviewKeyDown="OnWindowPreviewKeyDown">
 
     <Window.InputBindings>
         <KeyBinding Key="O" Modifiers="Control" Command="{Binding OpenCommand}"/>
@@ -14,6 +15,7 @@
         <KeyBinding Key="Right" Modifiers="Alt" Command="{Binding NextImageCommand}"/>
     </Window.InputBindings>
 
+    <Grid>
     <DockPanel>
         <Menu DockPanel.Dock="Top">
             <MenuItem Header="_File">
@@ -31,7 +33,7 @@
                 <MenuItem Header="Rotate _Left" Command="{Binding RotateCounterClockwiseCommand}"/>
                 <MenuItem Header="Rotate _Right" Command="{Binding RotateClockwiseCommand}"/>
                 <Separator/>
-                <MenuItem Header="_Crop..." Command="{Binding CropCommand}"/>
+                <MenuItem Header="_Crop Tool" Command="{Binding CropCommand}"/>
                 <MenuItem Header="_Resize..." Command="{Binding ResizeCommand}"/>
                 <MenuItem Header="Add/Edit _Text..." Command="{Binding AddTextCommand}"/>
                 <MenuItem Header="Apply Pending Text" Command="{Binding ApplyTextCommand}"/>
@@ -53,7 +55,8 @@
             <Button Content="Rotate Left" Command="{Binding RotateCounterClockwiseCommand}" Padding="8,2" Margin="2"/>
             <Button Content="Rotate Right" Command="{Binding RotateClockwiseCommand}" Padding="8,2" Margin="2"/>
             <Separator/>
-            <Button Content="Crop" Command="{Binding CropCommand}" Padding="8,2" Margin="2"/>
+            <ToggleButton Content="Crop" Command="{Binding CropCommand}" IsChecked="{Binding IsCropToolActive, Mode=OneWay}"
+                          IsEnabled="{Binding HasDocument}" Padding="8,2" Margin="2"/>
             <Button Content="Resize" Command="{Binding ResizeCommand}" Padding="8,2" Margin="2"/>
             <Button Content="Add Text" Command="{Binding AddTextCommand}" Padding="8,2" Margin="2"/>
             <Button Content="Background" Command="{Binding BackgroundCommand}" Padding="8,2" Margin="2"/>
@@ -63,7 +66,31 @@
             <Separator/>
             <Button Content="Undo" Command="{Binding UndoCommand}" Padding="8,2" Margin="2"/>
             <Button Content="Redo" Command="{Binding RedoCommand}" Padding="8,2" Margin="2"/>
+            <Separator/>
+            <ToggleButton Content="Eyedropper" Command="{Binding EyedropperToolCommand}" IsChecked="{Binding IsEyedropperActive, Mode=OneWay}"
+                          IsEnabled="{Binding HasDocument}" Padding="8,2" Margin="2"/>
+            <Border Width="22" Height="22" Margin="6,0,2,0" BorderBrush="Black" BorderThickness="1"
+                    Background="{Binding PickedColorArgb, Converter={StaticResource ArgbToBrushConverter}}"/>
+            <TextBlock Text="{Binding PickedColorHex}" VerticalAlignment="Center" Margin="4,0,4,0" FontFamily="Consolas"/>
+            <Button Content="Copy" Command="{Binding CopyPickedColorCommand}" Padding="8,2" Margin="2"/>
         </ToolBar>
+
+        <Border x:Name="CropOptionsBar" DockPanel.Dock="Top" Visibility="Collapsed" Background="#FFEFEFEF"
+                BorderBrush="#FFCCCCCC" BorderThickness="0,0,0,1" Padding="8,4">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Aspect ratio:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                <ComboBox x:Name="AspectRatioCombo" Width="90" SelectionChanged="OnAspectRatioChanged">
+                    <ComboBoxItem Content="Free" IsSelected="True"/>
+                    <ComboBoxItem Content="1:1"/>
+                    <ComboBoxItem Content="4:3"/>
+                    <ComboBoxItem Content="16:9"/>
+                </ComboBox>
+                <Button x:Name="ApplyCropButton" Content="Apply Crop" Padding="8,2" Margin="12,0,4,0" IsEnabled="False" Click="OnApplyCropClick"/>
+                <Button Content="Cancel" Padding="8,2" Margin="0,0,12,0" Click="OnCancelCropClick"/>
+                <TextBlock Text="Drag to select an area. Double-click inside it or press Enter to confirm, Esc to cancel."
+                           VerticalAlignment="Center" Foreground="Gray" FontSize="11"/>
+            </StackPanel>
+        </Border>
 
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
@@ -123,8 +150,12 @@
         <!-- Main image canvas: pan via ScrollViewer, zoom via ScaleTransform so
              the text-overlay Canvas (same transform) stays pixel-aligned with
              the image at any zoom level. -->
-        <ScrollViewer x:Name="ImageScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Background="#FF2B2B2B">
-            <Grid x:Name="ImageHost" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <ScrollViewer x:Name="ImageScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto" Background="#FF2B2B2B"
+                      PreviewMouseWheel="OnImageScrollViewerMouseWheel">
+            <Grid x:Name="ImageHost" HorizontalAlignment="Center" VerticalAlignment="Center"
+                  PreviewMouseLeftButtonDown="OnImageHostMouseDown"
+                  PreviewMouseMove="OnImageHostMouseMove"
+                  MouseLeave="OnImageHostMouseLeave">
                 <Grid.LayoutTransform>
                     <ScaleTransform
                         ScaleX="{Binding ZoomPercentage, Converter={StaticResource ZoomPercentageToScaleConverter}}"
@@ -137,7 +168,26 @@
                         PreviewMouseLeftButtonDown="OnOverlayMouseDown"
                         PreviewMouseMove="OnOverlayMouseMove"
                         PreviewMouseLeftButtonUp="OnOverlayMouseUp"/>
+                <!-- Interactive crop selection: owned/rendered by CropSelectionController. -->
+                <Canvas x:Name="CropOverlayCanvas" Background="Transparent" Visibility="Collapsed"
+                        Width="{Binding ElementName=MainImage, Path=Source.PixelWidth}"
+                        Height="{Binding ElementName=MainImage, Path=Source.PixelHeight}"/>
             </Grid>
         </ScrollViewer>
     </DockPanel>
+
+    <!-- Free-floating chrome that must ignore zoom/pan/panel layout: the
+         eyedropper's magnifier loupe, positioned in Window coordinates. -->
+    <Canvas x:Name="OverlayLayer" IsHitTestVisible="False">
+        <Border x:Name="MagnifierLoupe" Visibility="Collapsed" Width="130" Height="130" Background="White"
+                BorderBrush="Black" BorderThickness="2" CornerRadius="4">
+            <Grid ClipToBounds="True">
+                <Image x:Name="MagnifierImage" Width="120" Height="120" Stretch="Fill"
+                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                <Rectangle Width="1" Height="120" Fill="Red" HorizontalAlignment="Center" Opacity="0.6"/>
+                <Rectangle Width="120" Height="1" Fill="Red" VerticalAlignment="Center" Opacity="0.6"/>
+            </Grid>
+        </Border>
+    </Canvas>
+    </Grid>
 </Window>

@@ -13,9 +13,10 @@ public partial class BackgroundDialog : Window
 
     public BackgroundReplaceRequest? Result { get; private set; }
 
-    public BackgroundDialog()
+    public BackgroundDialog(uint? initialFillColor = null)
     {
         InitializeComponent();
+        if (initialFillColor.HasValue) _fillArgb = initialFillColor.Value;
         UpdateSwatches();
     }
 

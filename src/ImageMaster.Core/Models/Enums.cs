@@ -26,6 +26,18 @@ public enum PixelFormatKind
 }
 
 /// <summary>
+/// What to do with a confirmed interactive crop selection.
+/// </summary>
+public enum CropMode
+{
+    /// <summary>Export just the selected region as a new file; the open document is untouched.</summary>
+    ExtractAsNew,
+
+    /// <summary>Replace the working image with just the selected region (undoable; the file on disk is untouched until an explicit save).</summary>
+    ReplaceExisting
+}
+
+/// <summary>
 /// A 90-degree-increment rotation applied to an image.
 /// </summary>
 public enum RotateDirection

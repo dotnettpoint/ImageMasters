@@ -17,11 +17,14 @@ public interface IDialogService
     void ShowError(string title, string message);
     void ShowInfo(string title, string message);
 
+    /// <summary>Copies text (e.g. a picked color's hex value) to the system clipboard.</summary>
+    void CopyToClipboard(string text);
+
     /// <summary>Shows the resize dialog and returns the user's chosen request, or null if cancelled.</summary>
     ResizeRequest? ShowResizeDialog(int sourceWidth, int sourceHeight);
 
-    /// <summary>Shows the crop dialog and returns the user's chosen rectangle, or null if cancelled.</summary>
-    CropRequest? ShowCropDialog(int sourceWidth, int sourceHeight);
+    /// <summary>Shows the post-selection crop prompt (extract as new file vs. replace the working image), or null if cancelled.</summary>
+    CropMode? ShowCropConfirmDialog();
 
     /// <summary>Shows the JPEG/WebP quality dialog and returns the chosen quality (1-100), or null if cancelled.</summary>
     int? ShowQualityDialog(int currentQuality);
@@ -30,8 +33,10 @@ public interface IDialogService
     DpiChangeRequest? ShowDpiDialog(double currentDpiX, double currentDpiY);
 
     /// <summary>Shows the text overlay editor and returns the finished layer list (possibly unchanged), or null if cancelled.</summary>
-    IReadOnlyList<TextOverlayLayer>? ShowTextOverlayDialog(IReadOnlyList<TextOverlayLayer> existingLayers, int imageWidth, int imageHeight);
+    /// <param name="defaultNewLayerColor">ARGB color to use for newly-added layers (e.g. from the eyedropper), or null for the built-in default.</param>
+    IReadOnlyList<TextOverlayLayer>? ShowTextOverlayDialog(IReadOnlyList<TextOverlayLayer> existingLayers, int imageWidth, int imageHeight, uint? defaultNewLayerColor = null);
 
     /// <summary>Shows the background-replace dialog and returns the user's chosen request, or null if cancelled.</summary>
-    BackgroundReplaceRequest? ShowBackgroundDialog();
+    /// <param name="initialFillColor">ARGB color to pre-select as the fill color (e.g. from the eyedropper), or null for the built-in default.</param>
+    BackgroundReplaceRequest? ShowBackgroundDialog(uint? initialFillColor = null);
 }

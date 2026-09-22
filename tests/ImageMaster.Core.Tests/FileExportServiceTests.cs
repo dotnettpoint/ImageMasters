@@ -1,6 +1,7 @@
 using ImageMaster.Core.Models;
 using ImageMaster.Core.Tests.TestDoubles;
 using ImageMaster.Infrastructure.Services;
+using SkiaSharp;
 using Xunit;
 
 namespace ImageMaster.Core.Tests;
@@ -104,5 +105,61 @@ public class FileExportServiceTests : IDisposable
         var result = await _service.SaveAsAsync(buffer, new ImageMetadata(), originalPath, request);
 
         Assert.False(result.Success);
+    }
+
+    [Fact]
+    public async Task SaveAsAsync_TransparentBufferSavedAsJpeg_CompositesOntoWhiteByDefault()
+    {
+        // Fully transparent black - if the codec dropped alpha naively it
+        // could resolve to black; it must resolve to the default background
+        // (white) instead, per the background-integrity requirement.
+        var buffer = PixelBufferFactory.CreateSolidColor(4, 4, 0, 0, 0, 0);
+        var outputPath = Path.Combine(_tempDirectory, "transparent-on-white.jpg");
+        var request = new ExportRequest { OutputFilePath = outputPath, TargetFormat = ImageFormatType.Jpeg };
+
+        var result = await _service.SaveAsAsync(buffer, new ImageMetadata(), originalFilePath: null, request);
+
+        Assert.True(result.Success);
+        using var decoded = SKBitmap.Decode(outputPath);
+        var pixel = decoded.GetPixel(0, 0);
+        Assert.True(pixel.Red > 240 && pixel.Green > 240 && pixel.Blue > 240, $"Expected a near-white background, got {pixel}.");
+    }
+
+    [Fact]
+    public async Task SaveAsAsync_TransparentBufferSavedAsJpeg_WithCustomBackground_UsesThatColor()
+    {
+        var buffer = PixelBufferFactory.CreateSolidColor(4, 4, 0, 0, 0, 0);
+        var outputPath = Path.Combine(_tempDirectory, "transparent-on-red.jpg");
+        var request = new ExportRequest
+        {
+            OutputFilePath = outputPath,
+            TargetFormat = ImageFormatType.Jpeg,
+            BackgroundFillArgb = 0xFFFF0000 // opaque red
+        };
+
+        var result = await _service.SaveAsAsync(buffer, new ImageMetadata(), originalFilePath: null, request);
+
+        Assert.True(result.Success);
+        using var decoded = SKBitmap.Decode(outputPath);
+        var pixel = decoded.GetPixel(0, 0);
+        Assert.True(pixel.Red > 200 && pixel.Green < 60 && pixel.Blue < 60, $"Expected a near-red background, got {pixel}.");
+    }
+
+    [Fact]
+    public async Task SaveAsAsync_OpaqueBufferSavedAsJpeg_PixelsUnaffectedByFlatteningPath()
+    {
+        var buffer = PixelBufferFactory.CreateSolidColor(4, 4, 10, 20, 30, 255);
+        var outputPath = Path.Combine(_tempDirectory, "opaque.jpg");
+        var request = new ExportRequest { OutputFilePath = outputPath, TargetFormat = ImageFormatType.Jpeg };
+
+        var result = await _service.SaveAsAsync(buffer, new ImageMetadata(), originalFilePath: null, request);
+
+        Assert.True(result.Success);
+        using var decoded = SKBitmap.Decode(outputPath);
+        var pixel = decoded.GetPixel(0, 0);
+        // JPEG is lossy, so allow a small tolerance rather than an exact match.
+        Assert.InRange(pixel.Red, 20, 40);
+        Assert.InRange(pixel.Green, 10, 30);
+        Assert.InRange(pixel.Blue, 0, 20);
     }
 }

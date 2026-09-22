@@ -6,5 +6,6 @@
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
         <infra:ZoomPercentageToScaleConverter x:Key="ZoomPercentageToScaleConverter"/>
+        <infra:ArgbToBrushConverter x:Key="ArgbToBrushConverter"/>
     </Application.Resources>
 </Application>
