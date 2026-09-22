@@ -324,5 +324,23 @@ public partial class MainWindow : Window
             _viewModel.SelectThumbnailCommand.Execute(null);
     }
 
+    // --- Before/After comparison ("hold to see original") ------------------
+
+    private void OnCompareButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        _viewModel.IsShowingOriginal = true;
+        CompareButton.CaptureMouse();
+    }
+
+    private void OnCompareButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        CompareButton.ReleaseMouseCapture();
+    }
+
+    private void OnCompareButtonLostCapture(object sender, MouseEventArgs e)
+    {
+        _viewModel.IsShowingOriginal = false;
+    }
+
     private void OnExitClick(object sender, RoutedEventArgs e) => Close();
 }

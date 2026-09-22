@@ -23,6 +23,9 @@ public interface IDialogService
     /// <summary>Shows the resize dialog and returns the user's chosen request, or null if cancelled.</summary>
     ResizeRequest? ShowResizeDialog(int sourceWidth, int sourceHeight);
 
+    /// <summary>Shows the brightness/contrast/saturation/sharpen dialog and returns the user's chosen request, or null if cancelled.</summary>
+    ImageAdjustmentRequest? ShowAdjustmentsDialog();
+
     /// <summary>Shows the post-selection crop prompt (extract as new file vs. replace the working image), or null if cancelled.</summary>
     CropMode? ShowCropConfirmDialog();
 

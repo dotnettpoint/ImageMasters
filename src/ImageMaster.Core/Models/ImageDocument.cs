@@ -11,6 +11,13 @@ public sealed class ImageDocument
     public ImagePixelBuffer PixelBuffer { get; set; }
     public ImageMetadata Metadata { get; set; }
 
+    /// <summary>
+    /// The pixel buffer exactly as it was when this document was opened,
+    /// never mutated - lets the UI show a before/after comparison against
+    /// the current (possibly edited) <see cref="PixelBuffer"/>.
+    /// </summary>
+    public ImagePixelBuffer OriginalPixelBuffer { get; }
+
     /// <summary>Unflattened text overlays, kept editable until the user flattens or saves.</summary>
     public List<TextOverlayLayer> TextLayers { get; } = new();
 
@@ -22,5 +29,6 @@ public sealed class ImageDocument
         OriginalFormat = originalFormat;
         PixelBuffer = pixelBuffer;
         Metadata = metadata;
+        OriginalPixelBuffer = pixelBuffer.Clone();
     }
 }

@@ -48,6 +48,16 @@ public enum RotateDirection
 }
 
 /// <summary>
+/// A one-click stylistic filter applied to the whole image.
+/// </summary>
+public enum ImageFilterType
+{
+    Grayscale,
+    Sepia,
+    Invert
+}
+
+/// <summary>
 /// How a background replacement should be performed.
 /// </summary>
 public enum BackgroundReplaceMode

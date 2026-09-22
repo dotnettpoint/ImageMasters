@@ -80,6 +80,12 @@ public sealed class DialogService : IDialogService
         return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 
+    public ImageAdjustmentRequest? ShowAdjustmentsDialog()
+    {
+        var dialog = new AdjustmentsDialog { Owner = ActiveWindow };
+        return dialog.ShowDialog() == true ? dialog.Result : null;
+    }
+
     public CropMode? ShowCropConfirmDialog()
     {
         var dialog = new CropConfirmDialog { Owner = ActiveWindow };

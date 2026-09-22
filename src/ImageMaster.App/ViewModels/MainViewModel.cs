@@ -20,6 +20,8 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IImageTransformService _transformService;
     private readonly IImageCropService _cropService;
     private readonly IImageIntegrityService _integrityService;
+    private readonly IImageAdjustmentService _adjustmentService;
+    private readonly IImageFilterService _filterService;
     private readonly IDpiService _dpiService;
     private readonly ITextOverlayService _textOverlayService;
     private readonly IBackgroundService _backgroundService;
@@ -47,6 +49,8 @@ public sealed class MainViewModel : ViewModelBase
         IImageTransformService transformService,
         IImageCropService cropService,
         IImageIntegrityService integrityService,
+        IImageAdjustmentService adjustmentService,
+        IImageFilterService filterService,
         IDpiService dpiService,
         ITextOverlayService textOverlayService,
         IBackgroundService backgroundService,
@@ -59,6 +63,8 @@ public sealed class MainViewModel : ViewModelBase
         _transformService = transformService;
         _cropService = cropService;
         _integrityService = integrityService;
+        _adjustmentService = adjustmentService;
+        _filterService = filterService;
         _dpiService = dpiService;
         _textOverlayService = textOverlayService;
         _backgroundService = backgroundService;
@@ -90,6 +96,10 @@ public sealed class MainViewModel : ViewModelBase
         });
         EyedropperToolCommand = new RelayCommand(() => CurrentTool = CurrentTool == ToolMode.Eyedropper ? ToolMode.None : ToolMode.Eyedropper, () => Document is not null);
         CopyPickedColorCommand = new RelayCommand(() => _dialogService.CopyToClipboard(PickedColorHex), () => PickedColorArgb is not null);
+        AdjustmentsCommand = new AsyncRelayCommand(AdjustAsync, () => Document is not null);
+        GrayscaleFilterCommand = new AsyncRelayCommand(() => ApplyFilterAsync(ImageFilterType.Grayscale), () => Document is not null);
+        SepiaFilterCommand = new AsyncRelayCommand(() => ApplyFilterAsync(ImageFilterType.Sepia), () => Document is not null);
+        InvertFilterCommand = new AsyncRelayCommand(() => ApplyFilterAsync(ImageFilterType.Invert), () => Document is not null);
     }
 
     // --- Bindable state -----------------------------------------------
@@ -209,6 +219,22 @@ public sealed class MainViewModel : ViewModelBase
         ? $"#{(argb >> 16) & 0xFF:X2}{(argb >> 8) & 0xFF:X2}{argb & 0xFF:X2}"
         : "No color picked";
 
+    private bool _isShowingOriginal;
+    /// <summary>
+    /// Before/After comparison: while true, the display shows the image
+    /// exactly as it was when opened instead of the current (edited) buffer.
+    /// Meant to be driven by a press-and-hold "Compare" button.
+    /// </summary>
+    public bool IsShowingOriginal
+    {
+        get => _isShowingOriginal;
+        set
+        {
+            if (SetProperty(ref _isShowingOriginal, value))
+                RefreshCurrentImageSource();
+        }
+    }
+
     // --- Commands --------------------------------------------------------
 
     public AsyncRelayCommand OpenCommand { get; }
@@ -231,6 +257,10 @@ public sealed class MainViewModel : ViewModelBase
     public AsyncRelayCommand SelectThumbnailCommand { get; }
     public RelayCommand EyedropperToolCommand { get; }
     public RelayCommand CopyPickedColorCommand { get; }
+    public AsyncRelayCommand AdjustmentsCommand { get; }
+    public AsyncRelayCommand GrayscaleFilterCommand { get; }
+    public AsyncRelayCommand SepiaFilterCommand { get; }
+    public AsyncRelayCommand InvertFilterCommand { get; }
 
     // --- File operations ---------------------------------------------
 
@@ -259,6 +289,7 @@ public sealed class MainViewModel : ViewModelBase
 
             Document = result.Value;
             _undoRedo.Clear();
+            IsShowingOriginal = false;
             RefreshCurrentImageSource();
             UpdateStatusText();
 
@@ -505,6 +536,47 @@ public sealed class MainViewModel : ViewModelBase
         PickedColorArgb = ((uint)a << 24) | ((uint)r << 16) | ((uint)g << 8) | b;
         CurrentTool = ToolMode.None;
         StatusText = $"Picked color {PickedColorHex}.";
+    }
+
+    // --- Adjustments and filters -----------------------------------------
+
+    private async Task AdjustAsync()
+    {
+        if (Document is null) return;
+
+        var request = _dialogService.ShowAdjustmentsDialog();
+        if (request is null || request.IsNoOp) return;
+
+        await RunEditAsync("Adjusting...", async () =>
+        {
+            var result = await _adjustmentService.ApplyAdjustmentsAsync(Document.PixelBuffer, request);
+            if (!result.Success)
+            {
+                _dialogService.ShowError("Adjustment Failed", result.ErrorMessage!);
+                return false;
+            }
+
+            Document.PixelBuffer = result.Value!;
+            return true;
+        });
+    }
+
+    private async Task ApplyFilterAsync(ImageFilterType filterType)
+    {
+        if (Document is null) return;
+
+        await RunEditAsync($"Applying {filterType}...", async () =>
+        {
+            var result = await _filterService.ApplyFilterAsync(Document.PixelBuffer, filterType);
+            if (!result.Success)
+            {
+                _dialogService.ShowError("Filter Failed", result.ErrorMessage!);
+                return false;
+            }
+
+            Document.PixelBuffer = result.Value!;
+            return true;
+        });
     }
 
     // --- Navigation --------------------------------------------------
@@ -799,7 +871,10 @@ public sealed class MainViewModel : ViewModelBase
 
     private void RefreshCurrentImageSource()
     {
-        CurrentImageSource = Document is null ? null : PixelBufferBitmapConverter.ToBitmapSource(Document.PixelBuffer);
+        if (Document is null) { CurrentImageSource = null; return; }
+
+        var buffer = IsShowingOriginal ? Document.OriginalPixelBuffer : Document.PixelBuffer;
+        CurrentImageSource = PixelBufferBitmapConverter.ToBitmapSource(buffer);
     }
 
     private void UpdateStatusText()

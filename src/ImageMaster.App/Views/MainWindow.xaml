@@ -39,6 +39,13 @@
                 <MenuItem Header="Apply Pending Text" Command="{Binding ApplyTextCommand}"/>
                 <MenuItem Header="Change _Background..." Command="{Binding BackgroundCommand}"/>
                 <MenuItem Header="Change _Resolution/DPI..." Command="{Binding DpiCommand}"/>
+                <Separator/>
+                <MenuItem Header="_Adjustments..." Command="{Binding AdjustmentsCommand}"/>
+                <MenuItem Header="_Filters">
+                    <MenuItem Header="Grayscale" Command="{Binding GrayscaleFilterCommand}"/>
+                    <MenuItem Header="Sepia" Command="{Binding SepiaFilterCommand}"/>
+                    <MenuItem Header="Invert" Command="{Binding InvertFilterCommand}"/>
+                </MenuItem>
             </MenuItem>
             <MenuItem Header="_Navigate">
                 <MenuItem Header="_Previous Image" Command="{Binding PreviousImageCommand}" InputGestureText="Alt+Left"/>
@@ -73,6 +80,14 @@
                     Background="{Binding PickedColorArgb, Converter={StaticResource ArgbToBrushConverter}}"/>
             <TextBlock Text="{Binding PickedColorHex}" VerticalAlignment="Center" Margin="4,0,4,0" FontFamily="Consolas"/>
             <Button Content="Copy" Command="{Binding CopyPickedColorCommand}" Padding="8,2" Margin="2"/>
+            <Separator/>
+            <Button Content="Adjustments" Command="{Binding AdjustmentsCommand}" Padding="8,2" Margin="2"/>
+            <Button Content="Grayscale" Command="{Binding GrayscaleFilterCommand}" Padding="8,2" Margin="2"/>
+            <Button Content="Sepia" Command="{Binding SepiaFilterCommand}" Padding="8,2" Margin="2"/>
+            <Button Content="Invert" Command="{Binding InvertFilterCommand}" Padding="8,2" Margin="2"/>
+            <Separator/>
+            <Button x:Name="CompareButton" Content="Compare (Hold)" IsEnabled="{Binding HasDocument}" Padding="8,2" Margin="2"
+                    PreviewMouseLeftButtonDown="OnCompareButtonDown" PreviewMouseLeftButtonUp="OnCompareButtonUp" LostMouseCapture="OnCompareButtonLostCapture"/>
         </ToolBar>
 
         <Border x:Name="CropOptionsBar" DockPanel.Dock="Top" Visibility="Collapsed" Background="#FFEFEFEF"
