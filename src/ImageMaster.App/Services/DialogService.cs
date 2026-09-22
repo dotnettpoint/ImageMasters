@@ -78,6 +78,18 @@ public sealed class DialogService : IDialogService
         return dialog.ShowDialog() == true ? dialog.Result : null;
     }
 
+    public CropRequest? ShowCropDialog(int sourceWidth, int sourceHeight)
+    {
+        var dialog = new CropDialog(sourceWidth, sourceHeight) { Owner = ActiveWindow };
+        return dialog.ShowDialog() == true ? dialog.Result : null;
+    }
+
+    public int? ShowQualityDialog(int currentQuality)
+    {
+        var dialog = new QualityDialog(currentQuality) { Owner = ActiveWindow };
+        return dialog.ShowDialog() == true ? dialog.Result : null;
+    }
+
     public DpiChangeRequest? ShowDpiDialog(double currentDpiX, double currentDpiY)
     {
         var dialog = new DpiDialog(currentDpiX, currentDpiY) { Owner = ActiveWindow };

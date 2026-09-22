@@ -23,8 +23,10 @@ public class ResizeCalculationTests
     [Fact]
     public void CalculateTargetDimensions_ByDimensions_AspectLockOn_FitsWithinBoxPreservingRatio()
     {
-        // Source is 4:3. Requesting 1000x1000 with aspect lock should fit to
-        // the smaller dimension (height, since width would overshoot the box).
+        // Source is 4:3 landscape (wider than tall). Requesting a 1000x1000
+        // box with aspect lock should fit to the constraining dimension -
+        // width, here, since scaling height to 1000 would make width
+        // overshoot the box (1333 > 1000).
         var request = new ResizeRequest
         {
             ByPercentage = false,
@@ -35,8 +37,8 @@ public class ResizeCalculationTests
 
         var (width, height) = _service.CalculateTargetDimensions(800, 600, request);
 
-        Assert.Equal(1000, height);
-        Assert.True(width < 1000);
+        Assert.Equal(1000, width);
+        Assert.True(height < 1000);
         // 800:600 == width:height must still hold (within rounding).
         Assert.InRange(width / (double)height, 800.0 / 600.0 - 0.01, 800.0 / 600.0 + 0.01);
     }

@@ -18,6 +18,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IImageLoaderService _loaderService;
     private readonly IImageResizeService _resizeService;
     private readonly IImageTransformService _transformService;
+    private readonly IImageCropService _cropService;
     private readonly IDpiService _dpiService;
     private readonly ITextOverlayService _textOverlayService;
     private readonly IBackgroundService _backgroundService;
@@ -34,12 +35,16 @@ public sealed class MainViewModel : ViewModelBase
     private List<string> _folderFiles = new();
     private string? _folderPath;
 
+    /// <summary>Remembers the last JPEG/WebP quality the user picked, so a quick Save doesn't have to prompt again.</summary>
+    private int _lastUsedQuality = 90;
+
     public ObservableCollection<ThumbnailItemViewModel> Thumbnails { get; } = new();
 
     public MainViewModel(
         IImageLoaderService loaderService,
         IImageResizeService resizeService,
         IImageTransformService transformService,
+        IImageCropService cropService,
         IDpiService dpiService,
         ITextOverlayService textOverlayService,
         IBackgroundService backgroundService,
@@ -50,6 +55,7 @@ public sealed class MainViewModel : ViewModelBase
         _loaderService = loaderService;
         _resizeService = resizeService;
         _transformService = transformService;
+        _cropService = cropService;
         _dpiService = dpiService;
         _textOverlayService = textOverlayService;
         _backgroundService = backgroundService;
@@ -67,6 +73,7 @@ public sealed class MainViewModel : ViewModelBase
         PreviousThumbnailPageCommand = new AsyncRelayCommand(() => LoadThumbnailPageAsync(ThumbnailPageIndex - 1), () => ThumbnailPageIndex > 0);
         NextThumbnailPageCommand = new AsyncRelayCommand(() => LoadThumbnailPageAsync(ThumbnailPageIndex + 1), () => ThumbnailPageIndex < ThumbnailPageCount - 1);
         ResizeCommand = new AsyncRelayCommand(ResizeAsync, () => Document is not null);
+        CropCommand = new AsyncRelayCommand(CropAsync, () => Document is not null);
         AddTextCommand = new AsyncRelayCommand(EditTextLayersAsync, () => Document is not null);
         ApplyTextCommand = new AsyncRelayCommand(ApplyTextLayersAsync, () => Document is { TextLayers.Count: > 0 });
         BackgroundCommand = new AsyncRelayCommand(ChangeBackgroundAsync, () => Document is not null);
@@ -172,6 +179,7 @@ public sealed class MainViewModel : ViewModelBase
     public AsyncRelayCommand PreviousThumbnailPageCommand { get; }
     public AsyncRelayCommand NextThumbnailPageCommand { get; }
     public AsyncRelayCommand ResizeCommand { get; }
+    public AsyncRelayCommand CropCommand { get; }
     public AsyncRelayCommand AddTextCommand { get; }
     public AsyncRelayCommand ApplyTextCommand { get; }
     public AsyncRelayCommand BackgroundCommand { get; }
@@ -313,7 +321,7 @@ public sealed class MainViewModel : ViewModelBase
     private async Task SaveAsync()
     {
         if (Document is null) return;
-        await SaveToAsync(Document.SourceFilePath, Document.OriginalFormat, confirmOverwrite: false);
+        await SaveToAsync(Document.SourceFilePath, Document.OriginalFormat, confirmOverwrite: false, promptForQuality: false);
     }
 
     private async Task SaveAsAsync()
@@ -325,10 +333,10 @@ public sealed class MainViewModel : ViewModelBase
         if (choice is null) return;
 
         var (outputPath, format) = choice.Value;
-        await SaveToAsync(outputPath, format, confirmOverwrite: true);
+        await SaveToAsync(outputPath, format, confirmOverwrite: true, promptForQuality: true);
     }
 
-    private async Task SaveToAsync(string outputPath, ImageFormatType format, bool confirmOverwrite)
+    private async Task SaveToAsync(string outputPath, ImageFormatType format, bool confirmOverwrite, bool promptForQuality)
     {
         if (Document is null) return;
 
@@ -343,9 +351,14 @@ public sealed class MainViewModel : ViewModelBase
             if (!confirmed) return;
         }
 
-        var quality = format is ImageFormatType.Jpeg or ImageFormatType.WebP
-            ? PromptForQualityOrDefault()
-            : 90;
+        var quality = _lastUsedQuality;
+        if (format is ImageFormatType.Jpeg or ImageFormatType.WebP && promptForQuality)
+        {
+            var chosenQuality = _dialogService.ShowQualityDialog(_lastUsedQuality);
+            if (chosenQuality is null) return; // cancelled
+            quality = chosenQuality.Value;
+            _lastUsedQuality = quality;
+        }
 
         IsBusy = true;
         StatusText = "Saving...";
@@ -383,8 +396,6 @@ public sealed class MainViewModel : ViewModelBase
             IsBusy = false;
         }
     }
-
-    private int PromptForQualityOrDefault() => 90; // A dedicated quality-slider dialog could replace this; 90 is a sensible high-quality default.
 
     // --- Editing operations -------------------------------------------
 
@@ -449,6 +460,27 @@ public sealed class MainViewModel : ViewModelBase
         if (target < 0 || target >= _folderFiles.Count) return;
 
         await LoadFileAsync(_folderFiles[target]);
+    }
+
+    private async Task CropAsync()
+    {
+        if (Document is null) return;
+
+        var request = _dialogService.ShowCropDialog(Document.PixelBuffer.Width, Document.PixelBuffer.Height);
+        if (request is null) return;
+
+        await RunEditAsync("Cropping...", async () =>
+        {
+            var result = await _cropService.CropAsync(Document.PixelBuffer, request);
+            if (!result.Success)
+            {
+                _dialogService.ShowError("Crop Failed", result.ErrorMessage!);
+                return false;
+            }
+
+            Document.PixelBuffer = result.Value!;
+            return true;
+        });
     }
 
     private async Task EditTextLayersAsync()

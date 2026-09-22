@@ -20,6 +20,12 @@ public interface IDialogService
     /// <summary>Shows the resize dialog and returns the user's chosen request, or null if cancelled.</summary>
     ResizeRequest? ShowResizeDialog(int sourceWidth, int sourceHeight);
 
+    /// <summary>Shows the crop dialog and returns the user's chosen rectangle, or null if cancelled.</summary>
+    CropRequest? ShowCropDialog(int sourceWidth, int sourceHeight);
+
+    /// <summary>Shows the JPEG/WebP quality dialog and returns the chosen quality (1-100), or null if cancelled.</summary>
+    int? ShowQualityDialog(int currentQuality);
+
     /// <summary>Shows the DPI dialog and returns the user's chosen request, or null if cancelled.</summary>
     DpiChangeRequest? ShowDpiDialog(double currentDpiX, double currentDpiY);
 

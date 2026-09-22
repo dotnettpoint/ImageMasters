@@ -31,6 +31,7 @@
                 <MenuItem Header="Rotate _Left" Command="{Binding RotateCounterClockwiseCommand}"/>
                 <MenuItem Header="Rotate _Right" Command="{Binding RotateClockwiseCommand}"/>
                 <Separator/>
+                <MenuItem Header="_Crop..." Command="{Binding CropCommand}"/>
                 <MenuItem Header="_Resize..." Command="{Binding ResizeCommand}"/>
                 <MenuItem Header="Add/Edit _Text..." Command="{Binding AddTextCommand}"/>
                 <MenuItem Header="Apply Pending Text" Command="{Binding ApplyTextCommand}"/>
@@ -52,6 +53,7 @@
             <Button Content="Rotate Left" Command="{Binding RotateCounterClockwiseCommand}" Padding="8,2" Margin="2"/>
             <Button Content="Rotate Right" Command="{Binding RotateClockwiseCommand}" Padding="8,2" Margin="2"/>
             <Separator/>
+            <Button Content="Crop" Command="{Binding CropCommand}" Padding="8,2" Margin="2"/>
             <Button Content="Resize" Command="{Binding ResizeCommand}" Padding="8,2" Margin="2"/>
             <Button Content="Add Text" Command="{Binding AddTextCommand}" Padding="8,2" Margin="2"/>
             <Button Content="Background" Command="{Binding BackgroundCommand}" Padding="8,2" Margin="2"/>
