@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ImageMaster.Core</RootNamespace>
+    <AssemblyName>ImageMaster.Core</AssemblyName>
+    <!-- Core holds only models and interfaces: no processing or UI dependencies,
+         so it can be reused, unit-tested, and referenced without pulling in
+         SkiaSharp or WPF. -->
+  </PropertyGroup>
+
+</Project>

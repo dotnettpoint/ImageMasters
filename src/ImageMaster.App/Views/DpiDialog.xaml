@@ -1,0 +1,59 @@
+<Window x:Class="ImageMaster.App.Views.DpiDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Change Resolution / DPI" Height="260" Width="340"
+        WindowStartupLocation="CenterOwner" ResizeMode="NoResize"
+        ShowInTaskbar="False">
+    <Grid Margin="14">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Pixel dimensions are unchanged - this only affects print size." TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,8">
+            <TextBlock Text="Preset:" VerticalAlignment="Center" Width="70"/>
+            <ComboBox x:Name="PresetCombo" Width="140" SelectionChanged="OnPresetSelected">
+                <ComboBoxItem Content="72 dpi (web)"/>
+                <ComboBoxItem Content="96 dpi (screen)" IsSelected="True"/>
+                <ComboBoxItem Content="150 dpi (draft print)"/>
+                <ComboBoxItem Content="300 dpi (print)"/>
+                <ComboBoxItem Content="Custom"/>
+            </ComboBox>
+        </StackPanel>
+
+        <Grid Grid.Row="2" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="70"/>
+                <ColumnDefinition Width="100"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Horizontal:" VerticalAlignment="Center"/>
+            <TextBox Grid.Column="1" x:Name="DpiXBox" Text="96" TextChanged="OnDpiTextChanged"/>
+        </Grid>
+
+        <Grid Grid.Row="3" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="70"/>
+                <ColumnDefinition Width="100"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Vertical:" VerticalAlignment="Center"/>
+            <TextBox Grid.Column="1" x:Name="DpiYBox" Text="96" TextChanged="OnDpiTextChanged"/>
+        </Grid>
+
+        <CheckBox Grid.Row="4" x:Name="LinkXyCheckBox" Content="Link horizontal and vertical" IsChecked="True" Margin="0,0,0,8"/>
+
+        <TextBlock Grid.Row="6" x:Name="ValidationText" Foreground="Red" TextWrapping="Wrap"/>
+
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="OK" Width="80" Margin="0,0,8,0" IsDefault="True" Click="OnOkClick"/>
+            <Button Content="Cancel" Width="80" IsCancel="True"/>
+        </StackPanel>
+    </Grid>
+</Window>

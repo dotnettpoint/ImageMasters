@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ImageMaster.Infrastructure</RootNamespace>
+    <AssemblyName>ImageMaster.Infrastructure</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- SkiaSharp: cross-platform, actively maintained image decode/encode/draw
+         library. Chosen over System.Drawing.Common (Windows-only GDI+ wrapper,
+         effectively unsupported for new development) per the requirements.
+         SkiaSharp's decoder is far more tolerant of malformed EXIF/ICC/JPEG
+         segments than WIC (what Microsoft Photos uses), which is exactly why
+         it can open files Photos refuses. -->
+    <PackageReference Include="SkiaSharp" Version="2.88.8" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.8" />
+
+    <!-- MetadataExtractor: reads EXIF/IPTC/ICC metadata defensively (it is
+         built to tolerate malformed metadata blocks rather than throw), which
+         lets us surface DPI/orientation info without risking the image decode
+         path. Metadata read failures are caught separately from pixel decode
+         failures, as required. -->
+    <PackageReference Include="MetadataExtractor" Version="2.8.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ImageMaster.Core\ImageMaster.Core.csproj" />
+  </ItemGroup>
+
+</Project>
